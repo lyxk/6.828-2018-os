@@ -8,11 +8,7 @@
 
 
 ###################################################################
-# The kernel (this code) is linked at address ~(KERNBASE + 1 Meg), 
-# but the bootloader loads it at address ~1 Meg.
-#	
-# RELOC(x) maps a symbol x from its link address to its actual
-# location in physical memory (its load address).	 
+ 	 
 ###################################################################
 
 #define	RELOC(x) ((x) - KERNBASE)
