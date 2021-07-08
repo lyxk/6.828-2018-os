@@ -205,7 +205,8 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-	boot_map_region(kern_pgdir, KERNBASE, 0xfffffff - KERNBASE, 0, PTE_W);
+	boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
+
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -301,13 +302,14 @@ page_alloc(int alloc_flags)
 	struct PageInfo *alloc = page_free_list;
 	if (alloc == NULL) {
 		cprintf("page_alloc: out of free memory\n");
+		return NULL;
 	}
 
 	page_free_list = page_free_list->pp_link;
 	alloc->pp_link = NULL;
 
 	if (alloc_flags & ALLOC_ZERO) {
-		memset(page2kva(alloc), 0, sizeof(struct PageInfo));
+		memset(page2kva(alloc), 0, PGSIZE);
 	}
 	return alloc;
 }
@@ -424,9 +426,10 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 			panic("boot_map_region: out of memory\n");
 		}
 		*pte = pa | perm | PTE_P;
+		pgdir[PDX(va)] |= perm;
 		
 		pa += PGSIZE;
-		va += PGSIZE;
+	    va += PGSIZE;
 	}
 }
 
@@ -463,11 +466,12 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 	if (!pte) {
 		return -E_NO_MEM;
 	}
+
+	pp->pp_ref += 1;
 	if (*pte & PTE_P) {
 		page_remove(pgdir, va);
 	}
-
-	pp->pp_ref += 1;
+	
 	physaddr_t pa = page2pa(pp);
 	*pte = pa | perm | PTE_P;
 	// Also update the permission of the entry in pgdir
@@ -527,14 +531,14 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
-	pte_t **pte_store = NULL;
+	pte_t *pte = NULL;
 	// Get the page table entry corresponding to va in pte_store
-	struct PageInfo *pp = page_lookup(pgdir, va, pte_store);
+	struct PageInfo *pp = page_lookup(pgdir, va, &pte);
 	if (pp) {
 		page_decref(pp);
 	}
 	// Set the page table entry corresponding to va to 0
-	**pte_store = 0;
+	*pte = 0;
 	tlb_invalidate(pgdir, va);
 }
 
