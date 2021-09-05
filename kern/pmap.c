@@ -594,7 +594,34 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	uintptr_t start = ROUNDDOWN((uintptr_t)va, PGSIZE);
+	uintptr_t end = ROUNDUP((uintptr_t)va + len, PGSIZE);
+	uintptr_t addr = (uintptr_t) va;
+	pte_t *cur = NULL;
 
+	while (start < end) {
+		cur = pgdir_walk(curenv->env_pgdir, (void *)start, 0);
+		// If the address is below ULIM
+		bool is_user = (start <= ULIM);
+		// If the page has been allocated
+		bool is_allocated = (cur != NULL);
+		// If the page is present
+		bool is_present = (*cur & PTE_P);
+		// If the page has the same permissions as perm
+		bool has_perm = ((*cur & perm) == perm);
+
+		// cprintf("is_user: %d\n", is_user);
+		// cprintf("is_allocated: %d\n", is_allocated);
+		// cprintf("is_present: %d\n", is_present);
+		// cprintf("has_perm: %d\n", has_perm);
+
+		if (!is_user || !is_allocated || !is_present || !has_perm) {
+			user_mem_check_addr = (start < addr ? addr : start);
+			return -E_FAULT;
+		}
+
+		start += PGSIZE;
+	}
 	return 0;
 }
 

@@ -21,6 +21,7 @@ sys_cputs(const char *s, size_t len)
 	// Destroy the environment if not.
 
 	// LAB 3: Your code here.
+	user_mem_assert(curenv, s, len, PTE_U);
 
 	// Print the string supplied by the user.
 	cprintf("%.*s", len, s);
@@ -82,8 +83,7 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_getenvid();
 
 	case SYS_env_destroy:
-		env_destroy((struct Env *)a1);
-		return 0;
+		return sys_env_destroy(a1);
 
 	default:
 		return -E_INVAL;

@@ -372,11 +372,11 @@ load_icode(struct Env *e, uint8_t *binary)
 	struct Proghdr *eph = ph + elfhdr->e_phnum;
 
 	while (ph < eph) {
-		cprintf("ph: %x\n", ph);
-		cprintf("ph->p_va: %x\n", ph->p_va);
-		cprintf("binary: %x\n", binary);
-		cprintf("ph->p_offset: %x\n", ph->p_offset);
-		cprintf("ph->p_filesz: %x\n", ph->p_filesz);
+		// cprintf("ph: %x\n", ph);
+		// cprintf("ph->p_va: %x\n", ph->p_va);
+		// cprintf("binary: %x\n", binary);
+		// cprintf("ph->p_offset: %x\n", ph->p_offset);
+		// cprintf("ph->p_filesz: %x\n", ph->p_filesz);
 		if (ph->p_type == ELF_PROG_LOAD) {
 			if (ph->p_filesz > ph->p_memsz) {
 				panic("load_icode: invalid program header p_filesz > p_memsz");
@@ -411,16 +411,16 @@ env_create(uint8_t *binary, enum EnvType type)
 	// LAB 3: Your code here.
 	struct Env *e = NULL;
 
-	cprintf("before env_alloc: %x: %x\n", &e, e);
+	// cprintf("before env_alloc: %x: %x\n", &e, e);
 	int res = env_alloc(&e, 0);
-	cprintf("after env_alloc: %x: %x\n", &e, e);
+	// cprintf("after env_alloc: %x: %x\n", &e, e);
 	if (res) {
 		panic("env_create: %e\n", res);
 	}
 
-	cprintf("before load_icode: %x: %x\n", e, e->env_tf.tf_eip);
+	// cprintf("before load_icode: %x: %x\n", e, e->env_tf.tf_eip);
 	load_icode(e, binary);
-	cprintf("after load_icode: %x: %x\n", e, e->env_tf.tf_eip);
+	// cprintf("after load_icode: %x: %x\n", e, e->env_tf.tf_eip);
 
 	e->env_type = type;
 }
