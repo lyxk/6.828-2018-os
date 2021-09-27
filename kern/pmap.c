@@ -277,6 +277,11 @@ mem_init_mp(void)
 	//
 	// LAB 4: Your code here:
 
+	uintptr_t kstacktop_i = KSTACKTOP;
+	for (int i = 0; i < NCPU; i++) {
+		boot_map_region(kern_pgdir, kstacktop_i - KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+		kstacktop_i -= (KSTKSIZE + KSTKGAP);
+	}
 }
 
 // --------------------------------------------------------------
@@ -317,12 +322,16 @@ page_init(void)
 	// free pages!
 	size_t kernel_start = (size_t) IOPHYSMEM / PGSIZE;
 	size_t kernel_end = PADDR(boot_alloc(0)) / PGSIZE;
+	size_t mpentry_start = (size_t) MPENTRY_PADDR / PGSIZE;
 	size_t i;
 	for (i = 0; i < npages; i++) {
 		if (i == 0) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		} else if (i >= kernel_start && i <= kernel_end) {
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		} else if (i == mpentry_start) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		} else {
@@ -616,7 +625,8 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// beginning of the MMIO region.  Because this is static, its
 	// value will be preserved between calls to mmio_map_region
 	// (just like nextfree in boot_alloc).
-	static uintptr_t base = MMIOBASE;
+	static uintptr_t base = MMIOBASE; 
+	uintptr_t base_orig = base;
 
 	// Reserve size bytes of virtual memory starting at base and
 	// map physical pages [pa,pa+size) to virtual addresses
@@ -636,7 +646,17 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	uintptr_t end = ROUNDUP(base + size, PGSIZE);
+	while (base < end) {
+		if (base > MMIOLIM) {
+			panic("mmio_map_region failed because va %08x exceeds MMIOLIM %08x\n", base, MMIOLIM);
+		}
+		boot_map_region(kern_pgdir, base, PGSIZE, pa, PTE_PCD|PTE_PWT|PTE_W);
+		base += PGSIZE;
+		pa += PGSIZE;
+	}
+
+	return (void *)base_orig;
 }
 
 static uintptr_t user_mem_check_addr;
@@ -894,6 +914,7 @@ check_kern_pgdir(void)
 		for (i = 0; i < KSTKSIZE; i += PGSIZE)
 			assert(check_va2pa(pgdir, base + KSTKGAP + i)
 				== PADDR(percpu_kstacks[n]) + i);
+			
 		for (i = 0; i < KSTKGAP; i += PGSIZE)
 			assert(check_va2pa(pgdir, base + i) == ~0);
 	}
