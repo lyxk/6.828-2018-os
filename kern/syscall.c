@@ -147,7 +147,17 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	
+	// Check that the environment envid exists, and the caller has permission to change it
+	struct Env *e = NULL;
+	int errno = envid2env(envid, &e, true);
+	if (errno < 0) {
+		return -E_BAD_ENV;
+	}
+
+	e->env_pgfault_upcall = func;
+
+	return 0;
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -197,6 +207,7 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 		return -E_NO_MEM;
 	}
 
+	// Check that the environment envid exists, and the caller has permission to change it
 	struct Env *e = NULL;
 	int errno = envid2env(envid, &e, true);
 	if (errno < 0) {
@@ -244,18 +255,22 @@ sys_page_map(envid_t srcenvid, void *srcva,
 
 	// Check that srcva is valid
 	if ((uintptr_t)srcva >= UTOP || PGOFF(srcva)) {
+		cprintf("(uintptr_t)srcva >= UTOP || PGOFF(srcva)\n");
 		return -E_INVAL;
 	}
 	// Check that dstva is valid
 	if ((uintptr_t)dstva >= UTOP || PGOFF(dstva)) {
+		cprintf("(uintptr_t)dstva >= UTOP || PGOFF(dstva)\n");
 		return -E_INVAL;
 	}
 	// Check that PTE_U | PTE_P are set
 	if ( !( perm & (PTE_U | PTE_P) ) ) {
+		cprintf("!( perm & (PTE_U | PTE_P)\n");
 		return -E_INVAL;
 	}
 	// Check that other bits are not set
 	if (perm & (~PTE_SYSCALL)) {
+		cprintf("perm & (~PTE_SYSCALL)\n");
 		return -E_INVAL;
 	}
 	
@@ -265,31 +280,37 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	struct Env *srcenv = NULL;
 	errno = envid2env(srcenvid, &srcenv, true);
 	if (errno < 0) {
+		cprintf("errno = envid2env(srcenvid, &srcenv, true);\n");
 		return -E_BAD_ENV;
 	}
 
 	struct Env *dstenv = NULL;
 	errno = envid2env(dstenvid, &dstenv, true);
 	if (errno < 0) {
+		cprintf("errno = envid2env(dstenvid, &dstenv, true);\n");
 		return -E_BAD_ENV;
 	}
 
 	// Get the physical PageInfo object
 	pte_t *pte = NULL;
 	struct PageInfo *pp = page_lookup(srcenv->env_pgdir, srcva, &pte);
+	cprintf("pp: %x\n", pp);
 	// Return -E_INVAL if srcva is not mapped in srcenvid's address space
 	if (!pp) {
+		cprintf("!pp: %x\n", pp);
 		return -E_INVAL;
 	}
 
 	// Return -E_INVAL if we are trying to grant write access to a read-only page
 	if ( (perm & PTE_W) && !(*pte & PTE_W) ) {
+		cprintf("(perm & PTE_W) && !(*pte & PTE_W)\n");
 		return -E_INVAL;
 	}
 
 	// Retuen -E_NO_MEM if there's no memory to allocate any necessary page tables
 	errno = page_insert(dstenv->env_pgdir, pp, dstva, perm);
 	if (errno < 0) {
+		cprintf("page_insert(dstenv->env_pgdir, pp, dstva, perm)\n");
 		return -E_NO_MEM;
 	}
 
@@ -433,6 +454,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	
 	case SYS_page_unmap:
 		return sys_page_unmap(a1, (void *)a2);
+
+	case SYS_env_set_pgfault_upcall:
+		return sys_env_set_pgfault_upcall(a1, (void *)a2);
 
 	default:
 		return -E_INVAL;

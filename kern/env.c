@@ -420,16 +420,12 @@ env_create(uint8_t *binary, enum EnvType type)
 	// LAB 3: Your code here.
 	struct Env *e = NULL;
 
-	// cprintf("before env_alloc: %x: %x\n", &e, e);
 	int res = env_alloc(&e, 0);
-	// cprintf("after env_alloc: %x: %x\n", &e, e);
 	if (res) {
 		panic("env_create: %e\n", res);
 	}
 
-	// cprintf("before load_icode: %x: %x\n", e, e->env_tf.tf_eip);
 	load_icode(e, binary);
-	// cprintf("after load_icode: %x: %x\n", e, e->env_tf.tf_eip);
 
 	e->env_type = type;
 }

@@ -341,7 +341,7 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.=
 	// LAB 3: Your code here.
 	if (!(tf->tf_cs & 0x3)) {
-		panic("page fault in kernel mode!");
+		panic("[page_fault_handler] page fault in kernel mode!");
 	}
 	
 	// We've already handled kernel-mode exceptions, so if we get here,
@@ -377,6 +377,33 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+	if (curenv->env_pgfault_upcall) {
+		struct UTrapframe *utf = NULL;
+		uintptr_t utf_top;
+
+		// Recursive exception
+		if (tf->tf_esp >= UXSTACKTOP - PGSIZE && tf->tf_esp <= UXSTACKTOP) {
+			utf_top = tf->tf_esp - sizeof(struct UTrapframe) - 4;
+		} else {
+			utf_top = UXSTACKTOP - sizeof(struct UTrapframe);
+		}
+
+		// Check permission
+		user_mem_assert(curenv, (void *)utf_top, sizeof(struct UTrapframe), PTE_W | PTE_U);
+
+		// Copy info from the trap frame to the user trap frame
+		utf = (struct UTrapframe *)utf_top;
+		utf->utf_fault_va = fault_va;
+		utf->utf_err = tf->tf_err;
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_eflags = tf->tf_eflags;
+		utf->utf_esp = tf->tf_esp;
+
+		tf->tf_eip = (uintptr_t)(curenv->env_pgfault_upcall);
+		tf->tf_esp = utf_top;
+		env_run(curenv);
+	}
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

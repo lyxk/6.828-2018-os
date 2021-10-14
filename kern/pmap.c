@@ -567,7 +567,7 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 
 	physaddr_t pa = PTE_ADDR(*pte);
 	struct PageInfo *pp = pa2page(pa);
-
+	
 	return pp;
 }
 
@@ -690,19 +690,20 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 
 	while (start < end) {
 		cur = pgdir_walk(curenv->env_pgdir, (void *)start, 0);
-		// If the address is below ULIM
-		bool is_user = (start <= ULIM);
+		
 		// If the page has been allocated
 		bool is_allocated = (cur != NULL);
+		if (!is_allocated) {
+			user_mem_check_addr = (start < addr ? addr : start);
+			return -E_FAULT;
+		}
+
+		// If the address is below ULIM
+		bool is_user = (start <= ULIM);
 		// If the page is present
 		bool is_present = (*cur & PTE_P);
 		// If the page has the same permissions as perm
 		bool has_perm = ((*cur & perm) == perm);
-
-		// cprintf("is_user: %d\n", is_user);
-		// cprintf("is_allocated: %d\n", is_allocated);
-		// cprintf("is_present: %d\n", is_present);
-		// cprintf("has_perm: %d\n", has_perm);
 
 		if (!is_user || !is_allocated || !is_present || !has_perm) {
 			user_mem_check_addr = (start < addr ? addr : start);
