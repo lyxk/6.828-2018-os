@@ -445,7 +445,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 				return NULL;
 			pt->pp_ref += 1;
 
-			pgdir[pgdir_idx] = page2pa(pt) | PTE_P | PTE_U;
+			pgdir[pgdir_idx] = page2pa(pt) | PTE_P | PTE_U | PTE_W;
 		} else {
 			return NULL;
 		}
@@ -485,7 +485,6 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 			panic("boot_map_region: out of memory\n");
 		}
 		*pte = pa | perm | PTE_P;
-		pgdir[PDX(va)] |= perm;
 		
 		pa += PGSIZE;
 	    va += PGSIZE;
@@ -527,14 +526,21 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 	}
 
 	pp->pp_ref += 1;
-	if (*pte & PTE_P) {
+	if ((*pte) & PTE_P) {
 		page_remove(pgdir, va);
 	}
 	
 	physaddr_t pa = page2pa(pp);
 	*pte = pa | perm | PTE_P;
-	// Also update the permission of the entry in pgdir
-	pgdir[PDX(va)] |= perm;
+	// // Also update the permission of the entry in pgdir
+	// pgdir[PDX(va)] &= 0xFFFFF000; 
+	// pgdir[PDX(va)] |= PTE_P;
+	// if (perm & PTE_U) {
+	// 	pgdir[PDX(va)] |= PTE_U;
+	// }
+	// if (perm & PTE_W) {
+	// 	pgdir[PDX(va)] |= PTE_W;
+	// }
 
 	tlb_invalidate(pgdir, va);
 
@@ -593,9 +599,10 @@ page_remove(pde_t *pgdir, void *va)
 	pte_t *pte = NULL;
 	// Get the page table entry corresponding to va in pte_store
 	struct PageInfo *pp = page_lookup(pgdir, va, &pte);
-	if (pp) {
-		page_decref(pp);
+	if (!pte) {
+		return;
 	}
+	page_decref(pp);
 	// Set the page table entry corresponding to va to 0
 	*pte = 0;
 	tlb_invalidate(pgdir, va);

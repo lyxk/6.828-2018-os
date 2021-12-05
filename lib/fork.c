@@ -16,7 +16,7 @@ pgfault(struct UTrapframe *utf)
 {
 	void *addr = (void *) utf->utf_fault_va;
 	uint32_t err = utf->utf_err;
-	int errno;
+	int err_no;
 
 	// Check that the faulting access was (1) a write, and (2) to a
 	// copy-on-write page.  If not, panic.
@@ -26,7 +26,7 @@ pgfault(struct UTrapframe *utf)
 
 	// LAB 4: Your code here.
 	if (!(err & FEC_PR) || !(uvpt[PGNUM(addr)] & PTE_COW)){
-		panic("[pgfault] fault on no COW page");
+		panic("[pgfault] fault on no COW page %x", addr);
 	}
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
@@ -36,17 +36,17 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-	errno = sys_page_alloc(0, (void *)PFTEMP, PTE_P | PTE_U | PTE_W);
-	if (errno < 0) {
-		panic("[pgfault] [sys_page_alloc] failed: %e", errno);
+	err_no = sys_page_alloc(0, (void *)PFTEMP, PTE_P | PTE_U | PTE_W);
+	if (err_no < 0) {
+		panic("[pgfault] [sys_page_alloc] failed: %e", err_no);
 	}
 	uintptr_t fault_pg = ROUNDDOWN((uintptr_t)addr, PGSIZE);
 
 	memcpy((void *)PFTEMP, (void *)fault_pg, PGSIZE);
 
-	errno = sys_page_map(0, PFTEMP, 0, (void *)fault_pg, PTE_P | PTE_U | PTE_W);
-	if (errno < 0) {
-		panic("[pgfault] [sys_page_map] failed: %e", errno);
+	err_no = sys_page_map(0, PFTEMP, 0, (void *)fault_pg, PTE_P | PTE_U | PTE_W);
+	if (err_no < 0) {
+		panic("[pgfault] [sys_page_map] failed: %e", err_no);
 	}
 }
 
@@ -64,7 +64,7 @@ pgfault(struct UTrapframe *utf)
 static int
 duppage(envid_t envid, unsigned pn)
 {
-	int errno;
+	int err;
 
 	// LAB 4: Your code here.
 	int perm = PTE_P | PTE_U;
@@ -72,18 +72,19 @@ duppage(envid_t envid, unsigned pn)
 	// If the page is writable or copy-on-write
 	if (uvpt[pn] & (PTE_W | PTE_COW)) {
 		int new_perm = perm | PTE_COW;
-		errno = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), new_perm);
-		if (errno < 0) {
-			panic("[duppage] failed to map parent(W|COW) -> child: %e", errno);
+
+		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), new_perm);
+		if (err < 0) {
+			panic("[duppage] failed to map parent(W|COW) -> child: %e", err);
 		}
-		errno = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), new_perm);
-		if (errno < 0) {
-			panic("[duppage] failed to remap -> parent(COW): %e", errno);
+		err = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), new_perm);
+		if (err < 0) {
+			panic("[duppage] failed to remap -> parent(COW): %e", err);
 		}
 	} else {
-		errno = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), perm);
-		if (errno < 0) {
-			panic("[duppage] failed to map parent(P|U) -> child: %e\n", errno);
+		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), perm);
+		if (err < 0) {
+			panic("[duppage] failed to map parent(P|U) -> child: %e\n", err);
 		}
 	}
 	return 0;
@@ -109,8 +110,11 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
+		// Set the page fault handler
+	set_pgfault_handler(pgfault);
+
 	envid_t envid;
-	int errno;
+	int err;
 
 	// Allocate a new child environment.
 	// The kernel will initialize it with a copy of our register state,
@@ -130,36 +134,37 @@ fork(void)
 	}
 
 	// We're the parent.
-	// Eagerly copy our entire address space into the child.
-	// This is NOT what you should do in your fork implementation.
+	// Copy our mappings into the child.
+	int perm = (PTE_P | PTE_U);
 	for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
-		bool pt_valid = (uvpd[PDX(addr)] & (PTE_P | PTE_U));
-		bool pg_valid = (uvpt[PTX(addr)] & (PTE_P | PTE_U));
-		if (pt_valid && pg_valid) {
-			duppage(envid, addr / PGSIZE);
-		}
+		bool pt_valid = ((uvpd[PDX(addr)] & perm) == perm);
+		if (!pt_valid)
+			continue;
+
+		bool pg_valid = ((uvpt[PGNUM(addr)] & perm) == perm);
+		if (!pg_valid)
+			continue;
+
+		duppage(envid, PGNUM(addr));
 	}
 
 	// Allocate the exception stack for the child environment
-	errno = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W);
-	if (errno < 0) {
-		panic("[fork] [sys_page_alloc]: %e", errno);
+	err = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W);
+	if (err < 0) {
+		panic("[fork] [sys_page_alloc]: %e", err);
 	}
-
-	// Set the page fault handler
-	set_pgfault_handler(pgfault);
 
 	// Install the page fault upcall fro the child environment
 	extern void _pgfault_upcall();
-	errno = sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
-	if (errno < 0) {
-		panic("[fork] [sys_env_set_pgfault_upcall]: %e", errno);
+	err = sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
+	if (err < 0) {
+		panic("[fork] [sys_env_set_pgfault_upcall]: %e", err);
 	}
 
 	// Start the child environment running
-	errno = sys_env_set_status(envid, ENV_RUNNABLE);
-	if (errno < 0) {
-		panic("[fork] [sys_env_set_status]: %e", errno);
+	err = sys_env_set_status(envid, ENV_RUNNABLE);
+	if (err < 0) {
+		panic("[fork] [sys_env_set_status]: %e", err);
 	}
 
 	return envid;

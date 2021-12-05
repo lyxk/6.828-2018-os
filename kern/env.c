@@ -256,6 +256,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
+	e->env_tf.tf_eflags |= FL_IF;
 
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
@@ -381,11 +382,6 @@ load_icode(struct Env *e, uint8_t *binary)
 	struct Proghdr *eph = ph + elfhdr->e_phnum;
 
 	while (ph < eph) {
-		// cprintf("ph: %x\n", ph);
-		// cprintf("ph->p_va: %x\n", ph->p_va);
-		// cprintf("binary: %x\n", binary);
-		// cprintf("ph->p_offset: %x\n", ph->p_offset);
-		// cprintf("ph->p_filesz: %x\n", ph->p_filesz);
 		if (ph->p_type == ELF_PROG_LOAD) {
 			if (ph->p_filesz > ph->p_memsz) {
 				panic("load_icode: invalid program header p_filesz > p_memsz");
@@ -519,7 +515,8 @@ env_pop_tf(struct Trapframe *tf)
 {
 	// Record the CPU we are running on for user-space debugging
 	curenv->env_cpunum = cpunum();
-
+	
+	
 	asm volatile(
 		"\tmovl %0,%%esp\n"
 		"\tpopal\n"
@@ -565,9 +562,9 @@ env_run(struct Env *e)
 	curenv = e;
 	curenv->env_status = ENV_RUNNING;
 	curenv->env_runs += 1;
-	lcr3(PADDR(curenv->env_pgdir));
 	// Release the lock before switching to user mode
 	unlock_kernel();
+	lcr3(PADDR(curenv->env_pgdir));
 	env_pop_tf(&(e->env_tf));
 }
 
