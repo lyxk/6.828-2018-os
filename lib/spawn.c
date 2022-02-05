@@ -302,6 +302,25 @@ static int
 copy_shared_pages(envid_t child)
 {
 	// LAB 5: Your code here.
+	int perm = (PTE_P | PTE_U);
+	for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		bool pt_valid = ((uvpd[PDX(addr)] & perm) == perm);
+		if (!pt_valid)
+			continue;
+
+		int pn = PGNUM(addr);
+		if (uvpt[pn] & PTE_SHARE) {
+			int err = sys_page_map(0, (void *)(pn * PGSIZE), child, (void *)(pn * PGSIZE), PTE_SYSCALL | PTE_SHARE);
+			if (err < 0) {
+				panic("[copy_shared_pages] failed to map parent(SHARE) -> child: %e", err);
+			}
+			err = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), PTE_SYSCALL | PTE_SHARE);
+			if (err < 0) {
+				panic("[duppage] failed to remap -> parent(SHARE): %e", err);
+			}
+		}
+	}
+
 	return 0;
 }
 

@@ -67,22 +67,27 @@ duppage(envid_t envid, unsigned pn)
 	int err;
 
 	// LAB 4: Your code here.
-	int perm = PTE_P | PTE_U;
-
-	// If the page is writable or copy-on-write
-	if (uvpt[pn] & (PTE_W | PTE_COW)) {
-		int new_perm = perm | PTE_COW;
-
-		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), new_perm);
+	if (uvpt[pn] & PTE_SHARE) {
+		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), PTE_SYSCALL | PTE_SHARE);
+		if (err < 0) {
+			panic("[duppage] failed to map parent(SHARE) -> child: %e", err);
+		}
+		err = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), PTE_SYSCALL | PTE_SHARE);
+		if (err < 0) {
+			panic("[duppage] failed to remap -> parent(SHARE): %e", err);
+		}
+	} else if (uvpt[pn] & (PTE_W | PTE_COW)) {
+		// If the page is writable or copy-on-write
+		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), PTE_P | PTE_U | PTE_COW);
 		if (err < 0) {
 			panic("[duppage] failed to map parent(W|COW) -> child: %e", err);
 		}
-		err = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), new_perm);
+		err = sys_page_map(0, (void *)(pn * PGSIZE), 0, (void *)(pn * PGSIZE), PTE_P | PTE_U | PTE_COW);
 		if (err < 0) {
 			panic("[duppage] failed to remap -> parent(COW): %e", err);
 		}
 	} else {
-		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), perm);
+		err = sys_page_map(0, (void *)(pn * PGSIZE), envid, (void *)(pn * PGSIZE), PTE_P | PTE_U);
 		if (err < 0) {
 			panic("[duppage] failed to map parent(P|U) -> child: %e\n", err);
 		}
